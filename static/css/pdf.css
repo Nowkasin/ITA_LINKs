@@ -1,0 +1,92 @@
+/* ฝังฟอนต์ Sarabun ตรง ๆ แทนการพึ่งฟอนต์ระบบ — กัน WeasyPrint fallback ไปฟอนต์อื่นที่รองรับ
+   การเรียงสระ/วรรณยุกต์ไทยซับซ้อน (สระบน-ล่าง ซ้อนตัวอักษร) ไม่สมบูรณ์ ซึ่งเป็นสาเหตุของอาการ
+   "ตัวอักษรตก" ที่เจอ — ต้องมีไฟล์ฟอนต์จริงอยู่ที่ static/fonts/ ตามชื่อไฟล์ด้านล่าง (ดาวน์โหลด
+   จาก Google Fonts: https://fonts.google.com/specimen/Sarabun เลือกเฉพาะ Regular กับ Bold ก็พอ) */
+@font-face {
+    font-family: 'Sarabun';
+    src: url('../fonts/Sarabun-Regular.ttf');
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Sarabun';
+    src: url('../fonts/Sarabun-Bold.ttf');
+    font-weight: bold;
+    font-style: normal;
+}
+
+* {
+    font-family: 'Sarabun', sans-serif;
+    box-sizing: border-box;
+}
+@page {
+    size: A4 landscape;
+    margin: 8mm;
+}
+body {
+    margin: 0;
+    padding: 0;
+    color: #000;
+}
+.title {
+    text-align: center;
+    font-size: 13pt;
+    font-weight:normal;
+    margin: 0;
+}
+.subtitle {
+    text-align: center;
+    font-size: 12pt;
+    margin: 1mm 0 0 0;
+}
+.date-line {
+    text-align: center;
+    font-size: 12pt;
+    margin: 1mm 0 0 0;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    table-layout: fixed;
+}
+th, td {
+    border: 0.5pt solid #000;
+    padding: 1.5mm 1.5mm;
+    vertical-align: top;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    /* เผื่อระยะบรรทัดให้สระบน/ล่างและวรรณยุกต์วางซ้อนตัวอักษรได้เต็มที่ ไม่ถูกตัด/บีบ */
+    line-height: 1.7;
+}
+th {
+    background-color: #ebebeb;
+    font-weight: bold;
+    text-align: center;
+    font-size: 9pt;
+}
+td.center { text-align: center; }
+td.right { text-align: right; }
+
+/* แถวหัวเรื่อง/วันที่ ฝังไว้ใน thead เพื่อให้ซ้ำทุกหน้าเหมือนต้นฉบับ */
+.doc-header-row td {
+    border: none;
+    padding: 0 0 3mm 0;
+}
+.doc-header-row {
+    background: none;
+}
+
+col.c-seq    { width: 3.2%; }
+col.c-work   { width: 22.6%; }
+col.c-budget { width: 5.7%; }
+col.c-median { width: 5.8%; }
+col.c-method { width: 5.5%; }
+col.c-bidder { width: 20.5%; }
+col.c-winner { width: 18.2%; }
+col.c-reason { width: 6.2%; }
+col.c-docno  { width: 6.3%; }
+col.c-date   { width: 5.9%; }
+
+thead { display: table-header-group; }
+tr    { page-break-inside: avoid; }
