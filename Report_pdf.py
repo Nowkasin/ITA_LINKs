@@ -107,6 +107,27 @@ def format_thai_short_date(value: Any) -> str:
     except Exception:
         return safe_text(value)
 
+
+try:
+    from pythainlp.tokenize import word_tokenize
+except ImportError:
+    word_tokenize = None
+
+
+def insert_thai_break_hints(text: str) -> str:
+    """
+    แทรก zero-width space (U+200B) ระหว่างคำไทยที่ตัดคำได้ (ผ่าน pythainlp)
+    เพื่อให้ WeasyPrint/Pango มีจุดตัดบรรทัดที่ถูกต้อง — ปกติ Pango บน Windows ไม่มี
+    ไลบรารีตัดคำไทย (libthai) จึงตัดกลางคำแบบสุ่มถ้าไม่มีช่องว่าง/จุดตัดให้เลย
+    ถ้าไม่ได้ติดตั้ง pythainlp จะคืนข้อความเดิมเฉยๆ (fallback ปลอดภัย ไม่ error)
+    """
+    if not text or text == "-" or word_tokenize is None:
+        return text
+    try:
+        return "\u200b".join(word_tokenize(text, engine="newmm"))
+    except Exception:
+        return text
+
 # ===================== HELPERS =====================
 def get_arg(*names: str, default: str = "") -> str:
     """อ่านค่าได้ทั้งจาก query string (GET) และฟอร์ม POST (request.values = args รวมกับ form)"""
@@ -147,21 +168,6 @@ def parse_month(value: str) -> Optional[int]:
 
 def thai_month_name(month_no: Optional[int]) -> str:
     return THAI_MONTHS.get(month_no, "") if month_no else ""
-
-
-def shifted_month(month: Optional[int], offset: int = -1) -> Optional[int]:
-    """เลื่อนเดือนแบบ wrap 1-12 (offset=-1 -> เดือนก่อนหน้า เช่น เดือน 1 -> 12)"""
-    if month is None:
-        return None
-    return ((month - 1 + offset) % 12) + 1
-
-
-def report_month_name(month: Optional[int]) -> str:
-    """
-    ชื่อเดือนที่ใช้แสดงในหัวรายงาน (ทั้ง PDF และ XLSX) — ถอยหลัง 1 เดือนจากเดือนที่เลือก/กรองข้อมูลเสมอ
-    หมายเหตุ: กระทบแค่ "ข้อความ" ที่แสดง ไม่กระทบตัวกรองข้อมูลจริง (ยังกรองด้วยเดือนที่เลือกตามปกติ)
-    """
-    return thai_month_name(shifted_month(month))
 
 
 def format_currency(value: Any) -> str:
@@ -274,7 +280,7 @@ def get_plant_by_user(buasri_id: str) -> List[Dict[str, Any]]:
 def is_resource_admin_dept(buasri_id: str) -> bool:
     with db_cursor() as cur:
         cur.execute(
-            "SELECT cur_dept_cd FROM [10.1.21.250\\MS_ASSET_ERP].[SAP_FI].[dbo].[v_ess_Person] WHERE BUASRI_ID = %s",
+            "SELECT cur_dept_cd FROM [**.*.**.***\\MS_ASSET_ERP].[SAP_FI].[dbo].[v_ess_Person] WHERE BUASRI_ID = %s",
             (buasri_id,),
         )
         row = cur.fetchone()
@@ -445,6 +451,8 @@ def resolve_unit_display_name(dept_id, sp_plant_param, group_report, rows) -> st
 def resolve_query_filters():
     """parse + resolve query params ที่ใช้ร่วมกันในทั้ง pdf และ xlsx route"""
     fiscal_year = to_buddhist_year(to_int_or_none(get_arg("FiscalYear", "fiscal_year", "Year")))
+    # ใช้เดือนที่ผู้ใช้เลือกตรงๆ ทั้งกรองข้อมูลและตั้งชื่อเดือนในหัวรายงาน (ไม่ถอยหลัง 1 เดือนอีกต่อไป —
+    # เดือน 8 ที่เลือก ต้องได้ทั้งข้อมูลของเดือน 8 และหัวรายงานเขียนว่า "เดือนสิงหาคม" ตรงกัน)
     month = parse_month(get_arg("Month", "month"))
     dept_id = get_arg("Search_Dept_ID", "DeptID", "dept_id", default="").strip() or None
     dept_name = get_arg("CUR_INDEPT_LNAME_TH", "DeptName", default="").strip() or None
@@ -507,21 +515,29 @@ def scoped_fetch_filtered_rows(fiscal_year, month, dept_id, sp_plant_param, grou
         rows = filter_rows_by_plant(rows, None, allowed_plants)
     return rows, None
 
+
+def current_report_date() -> Tuple[str, str, str]:
+    """
+    วันที่ออกรายงาน (แถว 'วันที่ ... เดือน ... พ.ศ. ...' บนหัวเอกสาร) ใช้วันที่ปัจจุบันของเซิร์ฟเวอร์
+    เสมอ ไม่รับ override จาก query string/K2 อีกต่อไป — เพราะวันที่นี้หมายถึง "วันที่พิมพ์รายงาน"
+    ไม่ใช่ช่วงเวลาของข้อมูล (ช่วงเวลาของข้อมูลควบคุมด้วย FiscalYear/Month แยกต่างหาก)
+    """
+    today = datetime.now()
+    return str(today.day), thai_month_name(today.month), str(today.year + 543)
+
 # ===================== DATA MAPPING =====================
 def map_row(row: Dict[str, Any]) -> Dict[str, str]:
-    # หมายเหตุ: คู่กับ RefDocNo คือ RefDocNoDate (ไม่ใช่ ContractDate ซึ่งเป็นคอลัมน์แยกที่ไม่ได้ใช้งานจริง)
-    # ตรงกับ logic ที่ SP_4001 เองใช้คำนวณ RefDocNoDisplay
     contract_date_str = format_thai_short_date(row.get("RefDocNoDate"))
 
     return {
         "seq": safe_text(row.get("SeqNo")),
-        "work": safe_text(row.get("WorkDetail")),
+        "work": insert_thai_break_hints(safe_text(row.get("WorkDetail"))),
         "budget": format_currency(row.get("Budget")),
         "median": format_currency(row.get("MedianPrice")),
-        "method": safe_text(row.get("Method_name")),
-        "bidder_list": safe_text(row.get("BidderList")),
-        "winner": safe_text(row.get("Winner")),
-        "reason": safe_text(row.get("Reason_name")),
+        "method": insert_thai_break_hints(safe_text(row.get("Method_name"))),
+        "bidder_list": insert_thai_break_hints(safe_text(row.get("BidderList"))),
+        "winner": insert_thai_break_hints(safe_text(row.get("Winner"))),
+        "reason": insert_thai_break_hints(safe_text(row.get("Reason_name"))),
         "refdoc": safe_text(row.get("RefDocNo")),
         "contract_date": contract_date_str,
         "dept_name": safe_text(row.get("Dept_name")) if row.get("Dept_name") else safe_text(row.get("Dept_id")),
@@ -584,6 +600,13 @@ def render_xlsx_bytes(
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     row_idx = 1
+
+    # เลขแบบฟอร์มมุมขวาบน — เทียบเท่า <div class="form-code">สขร.1</div> ใน pdf_report.html
+    # ไม่ merge เซลล์นี้ (ต่างจากหัวเรื่อง/หน่วยงาน/วันที่) เพราะต้องการแค่ชิดขวาสุดคอลัมน์สุดท้าย
+    code_cell = ws.cell(row=row_idx, column=col_count, value="สขร.1")
+    code_cell.font = subtitle_font
+    code_cell.alignment = Alignment(horizontal="right", vertical="center")
+    row_idx += 1
 
     # หัวเรื่อง — ตรงกับ <div class="title"> ใน pdf_report.html
     ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=col_count)
@@ -758,17 +781,10 @@ def procurement_report_pdf():
     # ห้ามเอาข้อความดิบจาก CUR_INDEPT_LNAME_TH/DeptName มาโชว์ตรง ๆ ถ้า resolve ไม่เจอ เพราะจะโชว์
     # ชื่อหน่วยงานที่ไม่มีจริง ทั้งที่ข้อมูลในตารางถูกกรองด้วยหน่วยงานอื่น (ของ user ที่ login อยู่)
     unit_name = resolved_dept_name or get_arg("UnitName", "unit", default="").strip()
-    report_day = get_arg("ReportDay", "report_day", default="")
-    report_month = get_arg("ReportMonth", "report_month", default="")
-    report_be_year = get_arg("ReportYear", "report_year", default="")
-    # เดือนในหัวรายงานถอยหลัง 1 เดือนจากเดือนที่เลือกเสมอ (ไม่กระทบตัวกรองข้อมูลจริง)
-    month_name = get_arg("MonthName", "month_name", default="") or report_month_name(month)
-
-    if not (report_day and report_month and report_be_year):
-        today = datetime.now()
-        report_day = report_day or str(today.day)
-        report_month = report_month or thai_month_name(today.month)
-        report_be_year = report_be_year or str(today.year + 543)
+    # เดือนในหัวรายงาน = เดือนเดียวกับที่ใช้กรองข้อมูลเป๊ะๆ (เลือกเดือน 8 -> ได้ทั้งข้อมูลและหัวรายงานของเดือน 8)
+    month_name = get_arg("MonthName", "month_name", default="") or thai_month_name(month)
+    # วันที่ออกรายงานใช้วันที่ปัจจุบันเสมอ ไม่รับ override จาก query string
+    report_day, report_month, report_be_year = current_report_date()
 
     rows, scope_error = scoped_fetch_filtered_rows(fiscal_year, month, dept_id, sp_plant_param, group_report)
     if scope_error is not None:
@@ -792,17 +808,10 @@ def procurement_report_pdf():
 def procurement_report_xlsx():
     fiscal_year, month, dept_id, sp_plant_param, group_report, resolved_dept_name = resolve_query_filters()
     unit_name = resolved_dept_name or get_arg("UnitName", "unit", default="").strip()
-    report_day = get_arg("ReportDay", "report_day", default="")
-    report_month = get_arg("ReportMonth", "report_month", default="")
-    report_be_year = get_arg("ReportYear", "report_year", default="")
-    # เดือนในหัวรายงานถอยหลัง 1 เดือนจากเดือนที่เลือกเสมอ (ไม่กระทบตัวกรองข้อมูลจริง) — เหมือน PDF
-    month_name = get_arg("MonthName", "month_name", default="") or report_month_name(month)
-
-    if not (report_day and report_month and report_be_year):
-        today = datetime.now()
-        report_day = report_day or str(today.day)
-        report_month = report_month or thai_month_name(today.month)
-        report_be_year = report_be_year or str(today.year + 543)
+    # เดือนในหัวรายงาน = เดือนเดียวกับที่ใช้กรองข้อมูลเป๊ะๆ — เหมือน PDF
+    month_name = get_arg("MonthName", "month_name", default="") or thai_month_name(month)
+    # วันที่ออกรายงานใช้วันที่ปัจจุบันเสมอ ไม่รับ override จาก query string — เหมือน PDF
+    report_day, report_month, report_be_year = current_report_date()
 
     rows, scope_error = scoped_fetch_filtered_rows(fiscal_year, month, dept_id, sp_plant_param, group_report)
     if scope_error is not None:

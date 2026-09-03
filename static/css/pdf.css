@@ -44,6 +44,7 @@ body {
     font-size: 12pt;
     margin: 1mm 0 0 0;
 }
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -52,11 +53,13 @@ table {
 }
 th, td {
     border: 0.5pt solid #000;
-    padding: 1.5mm 1.5mm;
+    padding: 3px 4px;
     vertical-align: top;
-    word-wrap: break-word;
     overflow-wrap: break-word;
-    /* เผื่อระยะบรรทัดให้สระบน/ล่างและวรรณยุกต์วางซ้อนตัวอักษรได้เต็มที่ ไม่ถูกตัด/บีบ */
+    word-break: break-word;
+    /* ห้ามใส่ overflow: hidden ตรงนี้เด็ดขาด — เคยใส่ไว้แล้วไปตัดสระ/วรรณยุกต์และ
+       ข้อความที่ล้นกรอบทิ้งทั้งบล็อก (สาเหตุอาการ "ตัวอักษรตก"/เลขที่สัญญาขาดหาย
+       ที่เจอในรายงานจริง) ปล่อยให้ wrap ตามปกติแล้วพึ่ง line-height ด้านล่างแทน */
     line-height: 1.7;
 }
 th {
@@ -78,11 +81,11 @@ td.right { text-align: right; }
 }
 
 col.c-seq    { width: 3.2%; }
-col.c-work   { width: 22.6%; }
+col.c-work   { width: 20.6%; }  /* ลดจาก 22.6% ให้พื้นที่ผู้เสนอราคา */
 col.c-budget { width: 5.7%; }
 col.c-median { width: 5.8%; }
 col.c-method { width: 5.5%; }
-col.c-bidder { width: 20.5%; }
+col.c-bidder { width: 22.5%; }  /* เพิ่มจาก 20.5% ตามที่ขอ */
 col.c-winner { width: 18.2%; }
 col.c-reason { width: 6.2%; }
 col.c-docno  { width: 6.3%; }
