@@ -17,6 +17,7 @@ from weasyprint import HTML
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.page import PageMargins
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -677,12 +678,30 @@ def render_xlsx_bytes(
                 cell.alignment = left_top
         row_idx += 1
 
+    last_data_row = row_idx - 1
+
     # ความกว้างคอลัมน์โดยประมาณ (หน่วย: จำนวนตัวอักษร) — 10 คอลัมน์ตรงกับข้อมูล
     column_widths = [6, 30, 14, 14, 16, 26, 26, 20, 16, 12]
     for i, width in enumerate(column_widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
     ws.freeze_panes = ws.cell(row=data_start_row, column=1).coordinate
+
+    # ===== ตั้งค่าหน้าพิมพ์ — ให้เปิดใน Excel แล้วกด Print/Save as PDF ได้หน้าสวย ไม่ตัดคอลัมน์กลางตาราง =====
+    # A4 แนวนอน (เหมือนหน้า PDF ต้นฉบับ), บีบให้พอดี 1 หน้าตามความกว้าง แต่ปล่อยความสูงอัตโนมัติ
+    # (fitToHeight=0) เพื่อให้ยาวได้หลายหน้าตามจำนวนแถวข้อมูลโดยไม่บีบตัวอักษรจนอ่านไม่ออก
+    last_col_letter = get_column_letter(col_count)
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.4, bottom=0.4, header=0.2, footer=0.2)
+    ws.print_options.horizontalCentered = True
+    # พื้นที่พิมพ์ครอบทั้งตาราง (รวมแถว สขร.1/หัวเรื่อง/หน่วยงาน/วันที่ ด้านบนด้วย)
+    ws.print_area = f"A1:{last_col_letter}{last_data_row}"
+    # แถวหัวตาราง (ลำดับ/งานที่จัดซื้อ/ฯลฯ) พิมพ์ซ้ำทุกหน้า ให้รู้ว่าแต่ละคอลัมน์คือคอลัมน์อะไรแม้ขึ้นหน้าใหม่
+    ws.print_title_rows = f"{header_row}:{header_row}"
 
     buffer = BytesIO()
     wb.save(buffer)
